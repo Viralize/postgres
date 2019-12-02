@@ -177,7 +177,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 				  errmsg("could not parse value \"%s\" for parameter \"%s\"",
 						 strVal(elem->arg), elem->defname)));
 		}
-		else if (strcmp(elem->defname, "skip_temp_tables") == 0)
+		else if (strcmp(elem->defname, "skip-temp-tables") == 0)
 		{
 
 			if (elem->arg == NULL)

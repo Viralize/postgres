@@ -1,0 +1,52 @@
+-- predictability
+SET synchronous_commit = on;
+SET timezone = 'America/New_York';
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'test_decoding');
+ ?column? 
+----------
+ init
+(1 row)
+
+-- will print the temp table
+CREATE TABLE skip_temp_test_1(ts TIMESTAMP);
+INSERT INTO skip_temp_test_1 VALUES ('2016-06-22 19:10:25-07');
+BEGIN;
+ALTER TABLE skip_temp_test_1 ALTER COLUMN ts TYPE TIMESTAMPTZ;
+COMMIT;
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-temp-tables', '0');
+                                               data                                                
+---------------------------------------------------------------------------------------------------
+ BEGIN
+ COMMIT
+ BEGIN
+ table public.skip_temp_test_1: INSERT: ts[timestamp without time zone]:'Wed Jun 22 19:10:25 2016'
+ COMMIT
+ BEGIN
+ table public.pg_temp_16385: INSERT: ts[timestamp with time zone]:'Wed Jun 22 19:10:25 2016 EDT'
+ COMMIT
+(8 rows)
+
+-- will not print the temp table
+CREATE TABLE skip_temp_test_2(ts TIMESTAMP);
+INSERT INTO skip_temp_test_2 VALUES ('2016-06-22 19:10:25-07');
+BEGIN;
+ALTER TABLE skip_temp_test_2 ALTER COLUMN ts TYPE TIMESTAMPTZ;
+COMMIT;
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-temp-tables', '1');
+                                               data                                                
+---------------------------------------------------------------------------------------------------
+ BEGIN
+ COMMIT
+ BEGIN
+ table public.skip_temp_test_2: INSERT: ts[timestamp without time zone]:'Wed Jun 22 19:10:25 2016'
+ COMMIT
+ BEGIN
+ COMMIT
+(7 rows)
+
+SELECT pg_drop_replication_slot('regression_slot');
+ pg_drop_replication_slot 
+--------------------------
+ 
+(1 row)
+
