@@ -46,6 +46,7 @@ typedef struct
 	bool		skip_empty_xacts;
 	bool		xact_wrote_changes;
 	bool		only_local;
+	bool            skip_temp_tables;
 } TestDecodingData;
 
 static void pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
@@ -175,6 +176,17 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				  errmsg("could not parse value \"%s\" for parameter \"%s\"",
 						 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "skip_temp_tables") == 0)
+		{
+
+			if (elem->arg == NULL)
+				continue;
+			else if (!parse_bool(strVal(elem->arg), &data->skip_temp_tables))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								strVal(elem->arg), elem->defname)));
 		}
 		else
 		{
@@ -399,6 +411,8 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	Form_pg_class class_form;
 	TupleDesc	tupdesc;
 	MemoryContext old;
+	char * table_name;
+	bool is_temp_table;
 
 	data = ctx->output_plugin_private;
 
@@ -412,6 +426,13 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	class_form = RelationGetForm(relation);
 	tupdesc = RelationGetDescr(relation);
 
+	/* skip temp tables if needed */
+	table_name = NameStr(class_form->relname);
+	is_temp_table = (strncmp(table_name, "pg_temp_", 8) == 0) || (strncmp(table_name, "pg_toast_temp_", 14) == 0);
+	if (data->skip_temp_tables && is_temp_table) {
+		return;
+	}
+
 	/* Avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
 
@@ -422,7 +443,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 						   quote_qualified_identifier(
 													  get_namespace_name(
 							  get_rel_namespace(RelationGetRelid(relation))),
-											  NameStr(class_form->relname)));
+											  table_name));
 	appendStringInfoChar(ctx->out, ':');
 
 	switch (change->action)
